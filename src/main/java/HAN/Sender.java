@@ -2,13 +2,21 @@ package HAN;
 
 import java.net.*;
 import java.io.*;
+import java.util.Timer;
+import java.util.TimerTask;
 
 public class Sender {
-    public static void main(String[] args) {
-        String serverAddress = "127.0.0.1"; // Assuming both are on the same device
-        int serverPort = 12345;
-        DatagramSocket socket = null;
+    static int serverPort = 12345;
+    static int windowSize = 4;
+    static int base = 0;
+    static int nextSeqNum = 0;
+    static String[] frames;
+    static boolean[] acked = null;
+    static Timer[] timers;
+    static DatagramSocket socket = null;
 
+
+    public static void main(String[] args) {
         try {
             socket = new DatagramSocket();
             socket.setBroadcast(true);
@@ -32,54 +40,48 @@ public class Sender {
             System.out.println("Connecting to receiver at " + receiverIp);
 
             Socket connectionSocket = new Socket(receiverIp, serverPort);
-            BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-            DataOutputStream outToServer = new DataOutputStream(connectionSocket.getOutputStream());
-            DataInputStream inFromServer = new DataInputStream(connectionSocket.getInputStream());
+            PrintWriter outToServer = new PrintWriter(connectionSocket.getOutputStream(), true);
+            BufferedReader inFromServer = new BufferedReader(new InputStreamReader(connectionSocket.getInputStream()));
 
             String message;
-            int bit = 0;  // Initial alternating bit
 
             while (true) {
+                BufferedReader userInput = new BufferedReader(new InputStreamReader(System.in));
                 System.out.println("Enter a message: ");
-                message = reader.readLine();
+                message = userInput.readLine();
+
+
 
                 if (message.equalsIgnoreCase("exit")) {
                     break;
                 }
 
-                String[] words = message.split(" ");
+                frames = message.split(" ");
+                int n = frames.length;
+                acked = new boolean[n];
+                timers = new Timer[n];
 
-                for (String word : words) {
-                    boolean acknowledged = false;
-                    while (!acknowledged) {
-                        outToServer.writeUTF(bit + word);
-                        System.out.println("Sent: " + bit + word);
 
-                        long startTime = System.currentTimeMillis();
-                        boolean correctAck = false;
+                while (base < n) {
+                    while (nextSeqNum < base + windowSize && nextSeqNum < n) {
+                        sendFrame(outToServer, nextSeqNum, frames[nextSeqNum]);
+                        startTimer(outToServer, nextSeqNum, frames[nextSeqNum]);
+                        nextSeqNum++;
+                    }
 
-                        while (System.currentTimeMillis() - startTime < 3000) {
-                            if (inFromServer.available() > 0) {
-                                String ack = inFromServer.readUTF();
-                                if (ack.equals(String.valueOf(bit))) {
-                                    acknowledged = true;
-                                    correctAck = true;
-                                    System.out.println("Acknowledgment received for bit " + bit);
-                                    bit = 1 - bit;  
-                                    break;
-                                } else {
-                                    System.out.println("Incorrect acknowledgment");
-                                    break;
-                                }
-                            }
-                        }
+                    if (inFromServer.ready()) {
+                        String ack = inFromServer.readLine();
+                        int ackNum = Integer.parseInt(ack);
+                        System.out.println("Acknowledgment received for frame: " + ackNum);
+                        acked[ackNum] = true;
 
-                        if (!correctAck) {
-                            System.out.println("Timeout or incorrect acknowledgment. Resending message...");
+                        while (base < n && acked[base]) {
+                            base++;
                         }
                     }
                 }
             }
+            System.out.println("All frames sent successfully");
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
@@ -87,5 +89,28 @@ public class Sender {
                 socket.close();
             }
         }
+    }
+
+    private static void startTimer(PrintWriter outToServer, int SeqNum, String frame)  {
+        Timer timer = new Timer();
+        timer.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                try {
+                    if(!acked[SeqNum]) {
+                        sendFrame(outToServer, SeqNum, frame);
+                        startTimer(outToServer, SeqNum, frame);
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }, 10000);
+        timers[SeqNum] = timer;
+    }
+
+    private static void sendFrame(PrintWriter  outToServer, int SeqNum, String frame) throws IOException {
+        System.out.println("Sending frame: " + SeqNum + " with message part: " + frame);
+        outToServer.println(SeqNum + " " + frame);
     }
 }

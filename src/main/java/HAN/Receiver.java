@@ -6,6 +6,7 @@ import java.io.*;
 public class Receiver {
     public static void main(String[] args) {
         int port = 12345;
+        int expectedNum = 0;
 
         try {
             DatagramSocket socket = new DatagramSocket(port);
@@ -29,23 +30,25 @@ public class Receiver {
             Socket connectionSocket = serverSocket.accept();
             System.out.println("Connection established with the sender.");
 
-            DataInputStream inFromClient = new DataInputStream(connectionSocket.getInputStream());
-            DataOutputStream outToClient = new DataOutputStream(connectionSocket.getOutputStream());
+            BufferedReader inFromClient = new BufferedReader(new InputStreamReader(connectionSocket.getInputStream()));
+            PrintWriter outToClient = new PrintWriter(connectionSocket.getOutputStream(), true);
 
 
-            int expectedBit = 0;
             while (true) {
-                String received = inFromClient.readUTF();
-                int receivedBit = Integer.parseInt(received.substring(0, 1));
-                String word = received.substring(1);
-                if (receivedBit == expectedBit) {
-                    System.out.println("Received word: '" + word + "' with bit " + receivedBit);
-                    outToClient.writeUTF(String.valueOf(receivedBit));
-                    expectedBit = 1 - expectedBit;
+                String received = inFromClient.readLine();
+                String[] messageParts = received.split(" ");
+                int seqNum = Integer.parseInt(messageParts[0]);
+                String message = messageParts[1];
+                if(seqNum == expectedNum){
+                    expectedNum++;
+                    System.out.println("Received: Frame: " + seqNum + " with message part: " + message);
+                    outToClient.println(seqNum);
+                    System.out.println("sent ack: " + seqNum);
                 } else {
-                    System.out.println("Received bit was not the expected bit. Is either a duplicate, an error or we missed a message");
-                    outToClient.writeUTF(String.valueOf(expectedBit));
+                    System.out.println("Received: Frame: " + seqNum + " with message part: " + message + " - Discarded");
+                    outToClient.println(expectedNum - 1);
                 }
+
             }
         } catch (IOException e) {
             e.printStackTrace();
