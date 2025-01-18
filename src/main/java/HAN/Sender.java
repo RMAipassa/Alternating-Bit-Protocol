@@ -24,20 +24,21 @@ public class Sender {
                     break;
                 }
 
-                // Send message with alternating bit
-                outToServer.writeUTF(bit + message);
-                System.out.println("Sent: " + bit + " " +  message);
+                String[] words = message.split(" ");
 
-                // Wait for acknowledgment
-                boolean acknowledged = false;
-                while (!acknowledged) {
-                    String ack = inFromServer.readUTF();
-                    if (ack.equals(String.valueOf(bit))) {
-                        acknowledged = true;
-                        System.out.println("Acknowledgment received for bit " + bit);
-                        bit = 1 - bit;  // Alternate the bit
-                    } else {
-                        System.out.println("Waiting for correct acknowledgment...");
+                for (String word : words) {
+                    outToServer.writeUTF(bit + word);
+                    System.out.println("Sent: " + bit + " " +  word);
+                    boolean acknowledged = false;
+                    while (!acknowledged) {
+                        String ack = inFromServer.readUTF();
+                        if (ack.equals(String.valueOf(bit))) {
+                            acknowledged = true;
+                            System.out.println("Acknowledgment received for bit " + bit);
+                            bit = 1 - bit;
+                        } else {
+                            System.out.println("Waiting for correct acknowledgment...");
+                        }
                     }
                 }
             }
